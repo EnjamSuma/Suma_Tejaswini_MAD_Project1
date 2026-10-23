@@ -32,6 +32,14 @@ class PurchaseRepository {
         orderBy: 'purchased_at DESC, id DESC');
     return rows.map(PurchaseLog.fromMap).toList();
   }
+  Future<List<PurchaseLog>> inRange(
+      {required String from, required String to}) async {
+    final rows = await (await _db).query('purchase_logs',
+        where: "status = 'final' AND purchased_at >= ? AND purchased_at < ?",
+        whereArgs: [from, to],
+        orderBy: 'purchased_at DESC, id DESC');
+    return rows.map(PurchaseLog.fromMap).toList();
+  }
 
   /// Total of final purchases from [from] (inclusive) to [to] (exclusive).
   Future<int> totalFinal({required String from, required String to}) async {
