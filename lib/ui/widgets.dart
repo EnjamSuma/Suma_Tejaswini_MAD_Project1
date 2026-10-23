@@ -65,3 +65,36 @@ class EmptyState extends StatelessWidget {
         ),
       );
 }
+
+class ReceiptCard extends StatelessWidget {
+  final int plannedMinor;
+  final int actualMinor;
+  const ReceiptCard(
+      {super.key, required this.plannedMinor, required this.actualMinor});
+
+  @override
+  Widget build(BuildContext context) {
+    final diff = actualMinor - plannedMinor;
+    final words = diff == 0
+        ? 'On plan'
+        : diff < 0
+            ? 'Under plan by ${formatMinor(-diff)}'
+            : 'Over plan by ${formatMinor(diff)}';
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('Receipt', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 8),
+          Text('Planned: ${formatMinor(plannedMinor)}'),
+          Text('Actual: ${formatMinor(actualMinor)}'),
+          const SizedBox(height: 4),
+          Text('Difference: $words', // words as well as color
+              style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: diff > 0 ? Colors.red.shade700 : Colors.green.shade800)),
+        ]),
+      ),
+    );
+  }
+}
