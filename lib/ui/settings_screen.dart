@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../core/money.dart';
+import '../state/settings_notifier.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -7,21 +10,29 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  double _budget = 75;
+  late double _dollars;
+
+  @override
+  void initState() {
+    super.initState();
+    _dollars = context.read<SettingsNotifier>().budgetMinor / 100;
+  }
 
   @override
   Widget build(BuildContext context) => Scaffold(
         appBar: AppBar(title: const Text('Settings')),
         body: ListView(padding: const EdgeInsets.all(16), children: [
-          Text('Weekly budget: \$${_budget.round()}',
+          Text('Weekly budget: ${formatMinor(_dollars.round() * 100)}',
               style: Theme.of(context).textTheme.titleMedium),
           Slider(
             min: 10,
             max: 300,
             divisions: 29,
-            value: _budget,
-            label: '\$${_budget.round()}',
-            onChanged: (v) => setState(() => _budget = v),
+            value: _dollars.clamp(10, 300),
+            label: formatMinor(_dollars.round() * 100),
+            onChanged: (v) => setState(() => _dollars = v),
+            onChangeEnd: (v) =>
+                context.read<SettingsNotifier>().setBudget(v.round() * 100),
           ),
         ]),
       );
