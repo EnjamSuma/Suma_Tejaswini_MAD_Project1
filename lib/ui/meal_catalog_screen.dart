@@ -1,96 +1,99 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../data/models.dart';
+import '../state/meals_notifier.dart';
+import '../state/purchases_notifier.dart';
+import '../state/settings_notifier.dart';
 import 'meal_detail_screen.dart';
 import 'meal_editor_screen.dart';
 import 'widgets.dart';
 
-class MealCatalogScreen extends StatefulWidget {
+class MealCatalogScreen extends StatelessWidget {
   const MealCatalogScreen({super.key});
-  @override
-  State<MealCatalogScreen> createState() => _MealCatalogScreenState();
-}
 
-class _MealCatalogScreenState extends State<MealCatalogScreen> {
-  // TEMPORARY sample data (clearly fictional); replaced by the repository later.
-  final List<Meal> _meals = [
-    const Meal(id: 1, name: 'Chicken Bowl', venueNote: 'Campus Cafe',
-        cuisine: 'Asian', estimatedPriceMinor: 750),
-    const Meal(id: 2, name: 'Veggie Wrap', venueNote: 'Food court',
-        cuisine: 'American', estimatedPriceMinor: 500),
-    const Meal(id: 3, name: 'Bean Burrito', venueNote: 'Dining hall',
-        cuisine: 'Mexican', estimatedPriceMinor: 325),
-  ];
-  String _filter = 'All';
-
-  Future<void> _openEditor([Meal? meal]) async {
+  Future<void> _openEditor(BuildContext context, [Meal? meal]) async {
     final result = await Navigator.push<Meal>(context,
         MaterialPageRoute(builder: (_) => MealEditorScreen(meal: meal)));
-    if (result == null) return;
-    setState(() {
-      if (meal == null) {
-        _meals.add(Meal(
-            id: DateTime.now().millisecondsSinceEpoch,
-            name: result.name, venueNote: result.venueNote,
-            cuisine: result.cuisine,
-            estimatedPriceMinor: result.estimatedPriceMinor));
-      } else {
-        final i = _meals.indexWhere((m) => m.id == meal.id);
-        _meals[i] = result;
-      }
-    });
+    if (result == null || !context.mounted) return;
+    await context.read<MealsNotifier>().save(result);
   }
 
-  Future<void> _confirmDelete(Meal meal) async {
+  Future<void> _confirmDelete(BuildContext context, Meal meal) async {
+    final meals = context.read<MealsNotifier>();
+    final purchases = context.read<PurchasesNotifier>();
+    final count = await meals.logCount(meal.id!);
+    if (!context.mounted) return;
     final ok = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('Delete meal?'),
-        // Later: show the real count from MealRepository.countLogs
-        content: Text('Delete "${meal.name}" and its purchases?'),
+        content: Text(
+            'Delete "${meal.name}"? This also deletes $count purchase(s).'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false),
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
               child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(context, true),
+          FilledButton(
+              onPressed: () => Navigator.pop(context, true),
               child: const Text('Delete')),
         ],
       ),
     );
-    if (ok == true) setState(() => _meals.removeWhere((m) => m.id == meal.id));
+    if (ok == true) {
+      await meals.remove(meal.id!);
+      await purchases.load(); // cascade removed its purchases
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final shown = _filter == 'All'
-        ? _meals
-        : _meals.where((m) => m.cuisine == _filter).toList();
+    final meals = context.watch<MealsNotifier>();
+    final purchases = context.watch<PurchasesNotifier>();
+    final settings = context.watch<SettingsNotifier>();
+    final shown = meals.visible;
+
     return Scaffold(
       appBar: AppBar(title: const Text('Budget Bites')),
       floatingActionButton: FloatingActionButton(
-          onPressed: () => _openEditor(), child: const Icon(Icons.add)),
+          onPressed: () => _openEditor(context), child: const Icon(Icons.add)),
       body: Column(children: [
-        const SummaryCard(spentMinor: 4250, budgetMinor: 7500), // placeholder
+        SummaryCard(
+            spentMinor: purchases.weekTotalMinor,
+            budgetMinor: settings.budgetMinor),
         Wrap(spacing: 8, children: [
           for (final c in ['All', ...cuisines])
             ChoiceChip(
                 label: Text(c),
-                selected: _filter == c,
-                onSelected: (_) => setState(() => _filter = c)),
+                selected: meals.cuisine == c,
+                onSelected: (_) => meals.setCuisine(c)),
         ]),
         Expanded(
-          child: shown.isEmpty
-              ? const EmptyState('No meals match this filter. Tap + to add one.')
-              : ListView.builder(
-                  itemCount: shown.length,
-                  itemBuilder: (_, i) {
-                    final m = shown[i];
-                    return MealCard(
-                      meal: m,
-                      onTap: () => Navigator.push(context, MaterialPageRoute(
-                          builder: (_) => MealDetailScreen(meal: m))),
-                      onEdit: () => _openEditor(m),
-                      onDelete: () => _confirmDelete(m),
-                    );
-                  }),
+          child: meals.error != null
+              ? Center(
+                  child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  Text(meals.error!),
+                  TextButton(onPressed: meals.load, child: const Text('Retry')),
+                ]))
+              : meals.loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : shown.isEmpty
+                      ? const EmptyState(
+                          'No meals match this filter. Tap + to add one.')
+                      : ListView.builder(
+                          itemCount: shown.length,
+                          itemBuilder: (_, i) {
+                            final m = shown[i];
+                            return MealCard(
+                              meal: m,
+                              onTap: () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                      builder: (_) =>
+                                          MealDetailScreen(meal: m))),
+                              onEdit: () => _openEditor(context, m),
+                              onDelete: () => _confirmDelete(context, m),
+                            );
+                          }),
         ),
       ]),
     );
