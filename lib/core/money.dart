@@ -14,3 +14,11 @@ int? parseToMinor(String input) {
   final cents = parts.length == 2 ? int.parse(parts[1].padRight(2, '0')) : 0;
   return dollars * 100 + cents;
 }
+
+String differenceWords(int planned, int actual) {
+  final diff = actual - planned;
+  if (diff == 0) return 'On plan';
+  return diff < 0
+      ? 'Under plan by ${formatMinor(-diff)}'
+      : 'Over plan by ${formatMinor(diff)}';
+}
