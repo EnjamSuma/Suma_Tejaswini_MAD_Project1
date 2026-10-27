@@ -45,7 +45,13 @@ class SummaryCard extends StatelessWidget {
           Text('This week: ${formatMinor(spentMinor)} of ${formatMinor(budgetMinor)}',
               style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 8),
-          LinearProgressIndicator(value: used.clamp(0.0, 1.0)),
+                    TweenAnimationBuilder<double>(
+            tween: Tween<double>(end: used.clamp(0.0, 1.0)),
+            duration: MediaQuery.of(context).disableAnimations
+                ? Duration.zero
+                : const Duration(milliseconds: 600),
+            builder: (_, v, __) => LinearProgressIndicator(value: v),
+          ),
           const SizedBox(height: 8),
           Text('${(used * 100).round()}% of budget used'),
         ]),
@@ -75,11 +81,7 @@ class ReceiptCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final diff = actualMinor - plannedMinor;
-    final words = diff == 0
-        ? 'On plan'
-        : diff < 0
-            ? 'Under plan by ${formatMinor(-diff)}'
-            : 'Over plan by ${formatMinor(diff)}';
+    final words = differenceWords(plannedMinor, actualMinor);
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
