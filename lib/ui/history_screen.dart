@@ -7,6 +7,8 @@ import '../state/meals_notifier.dart';
 import '../state/purchases_notifier.dart';
 import '../state/settings_notifier.dart';
 import 'widgets.dart';
+import 'package:flutter/foundation.dart';
+import '../domain/summary.dart';
 
 class HistoryScreen extends StatefulWidget {
   const HistoryScreen({super.key});
@@ -16,6 +18,8 @@ class HistoryScreen extends StatefulWidget {
 
 class _HistoryScreenState extends State<HistoryScreen> {
   String _cuisine = 'All';
+  List<int>? _lastPrices;
+  Future<List<int>>? _summaryFuture;
 
   Future<void> _editPrice(PurchaseLog p) async {
     final c = TextEditingController(
@@ -78,8 +82,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
     final shown = purchases.logs.where((p) =>
         _cuisine == 'All' || byId[p.mealId]?.cuisine == _cuisine).toList();
-    final total = shown.fold<int>(0, (s, p) => s + p.actualPriceMinor);
-    final used = budget == 0 ? 0 : (total * 100 ~/ budget);
+    final prices = shown.map((p) => p.actualPriceMinor).toList();
+    if (!listEquals(prices, _lastPrices)) {
+      _lastPrices = prices;
+      _summaryFuture = compute(summarize, prices); // runs off the UI thread
+    }
 
     return Scaffold(
       appBar: AppBar(title: const Text('History')),
@@ -109,15 +116,27 @@ class _HistoryScreenState extends State<HistoryScreen> {
           ]),
         ),
         Card(
-          child: ListTile(
-            title: Text(shown.isEmpty
-                ? 'No purchases yet'
-                : 'Total ${formatMinor(total)}  |  ${shown.length} purchases'),
-            subtitle: shown.isEmpty
-                ? null
-                : Text('Average ${formatMinor(total ~/ shown.length)}  |  '
-                    '$used% of weekly budget'),
-          ),
+          FutureBuilder<List<int>>(
+          future: _summaryFuture,
+          builder: (_, snap) {
+            if (!snap.hasData) return const LinearProgressIndicator();
+            final total = snap.data![0];
+            final count = snap.data![1];
+            final avg = snap.data![2];
+            final used = budget == 0 ? 0 : total * 100 ~/ budget;
+            return Card(
+              child: ListTile(
+                title: Text(count == 0
+                    ? 'No purchases yet'
+                    : 'Total ${formatMinor(total)}  |  $count purchases'),
+                subtitle: count == 0
+                    ? null
+                    : Text('Average ${formatMinor(avg)}  |  '
+                        '$used% of weekly budget'),
+              ),
+            );
+          },
+        ),
         ),
         Expanded(
           child: shown.isEmpty
