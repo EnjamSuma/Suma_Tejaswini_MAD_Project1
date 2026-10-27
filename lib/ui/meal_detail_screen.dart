@@ -1,5 +1,7 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../core/dates.dart';
 import '../core/money.dart';
 import '../data/models.dart';
@@ -15,18 +17,32 @@ class MealDetailScreen extends StatefulWidget {
   State<MealDetailScreen> createState() => _MealDetailScreenState();
 }
 
-class _MealDetailScreenState extends State<MealDetailScreen> {
+class _MealDetailScreenState extends State<MealDetailScreen>
+    with SingleTickerProviderStateMixin {
   List<PurchaseLog> _history = [];
   bool _started = false;
   late int _actual;
   late String _saveKey;
+  late final AnimationController _reveal;
+  String? _savedNote;
+
+  String get _draftKey => 'draft_${widget.meal.id}';
 
   @override
   void initState() {
     super.initState();
+    _reveal = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 500));
     _actual = widget.meal.estimatedPriceMinor;
     _saveKey = _newKey();
     _loadHistory();
+    _restoreDraft();
+  }
+
+  @override
+  void dispose() {
+    _reveal.dispose();
+    super.dispose();
   }
 
   String _newKey() =>
@@ -39,29 +55,68 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
     setState(() => _history = h);
   }
 
-  void _start() => setState(() {
+  // The unfinished purchase lives in SharedPreferences until it is saved or reset.
+  Future<void> _restoreDraft() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_draftKey);
+    if (raw == null || !mounted) return;
+    try {
+      final d = jsonDecode(raw) as Map<String, dynamic>;
+      setState(() {
         _started = true;
-        _actual = widget.meal.estimatedPriceMinor;
-        _saveKey = _newKey(); // a fresh key for each new form
+        _actual = d['actual'] as int;
+        _saveKey = d['saveKey'] as String;
       });
+    } catch (_) {
+      await prefs.remove(_draftKey);
+    }
+  }
+
+  Future<void> _saveDraft() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+        _draftKey, jsonEncode({'actual': _actual, 'saveKey': _saveKey}));
+  }
+
+  Future<void> _clearDraft() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_draftKey);
+  }
+
+  void _start() {
+    setState(() {
+      _started = true;
+      _savedNote = null;
+      _actual = widget.meal.estimatedPriceMinor;
+      _saveKey = _newKey();
+    });
+    _saveDraft();
+  }
 
   Future<void> _save() async {
     final notifier = context.read<PurchasesNotifier>();
     final messenger = ScaffoldMessenger.of(context);
+    final reduceMotion = MediaQuery.of(context).disableAnimations;
+    final planned = widget.meal.estimatedPriceMinor;
+    final saved = _actual;
     final ok = await notifier.add(PurchaseLog(
         mealId: widget.meal.id!,
         purchasedAt: ymd(DateTime.now()),
-        actualPriceMinor: _actual,
+        actualPriceMinor: saved,
         saveKey: _saveKey));
     if (!mounted) return;
     messenger.showSnackBar(SnackBar(
-        content: Text(ok
-            ? 'Purchase saved'
-            : notifier.saving
-                ? 'Already saving...'
-                : 'Could not save. Please try again.')));
+        content: Text(ok ? 'Purchase saved' : 'Could not save. Please try again.')));
     if (ok) {
-      setState(() => _started = false);
+      await _clearDraft();
+      setState(() {
+        _started = false;
+        _savedNote =
+            'Saved ${formatMinor(saved)}: ${differenceWords(planned, saved)}';
+      });
+      _reveal.duration =
+          reduceMotion ? Duration.zero : const Duration(milliseconds: 500);
+      _reveal.forward(from: 0);
       await _loadHistory();
     }
   }
@@ -83,6 +138,7 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
       ),
     );
     if (ok == true && mounted) {
+      await _clearDraft();
       setState(() {
         _started = false;
         _actual = widget.meal.estimatedPriceMinor;
@@ -116,6 +172,18 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
         ),
         ReceiptCard(
             plannedMinor: meal.estimatedPriceMinor, actualMinor: _actual),
+        if (_savedNote != null)
+          FadeTransition(
+            opacity: _reveal,
+            child: SlideTransition(
+              position: Tween<Offset>(
+                      begin: const Offset(0, 0.3), end: Offset.zero)
+                  .animate(_reveal),
+              child: Card(
+                  color: Colors.green.shade50,
+                  child: ListTile(title: Text(_savedNote!))),
+            ),
+          ),
         Text('Actual price: ${formatMinor(_actual)}'),
         Slider(
           value: _actual.clamp(0, maxMinor).toDouble(),
@@ -123,7 +191,9 @@ class _MealDetailScreenState extends State<MealDetailScreen> {
           max: maxMinor.toDouble(),
           divisions: maxMinor ~/ 25,
           label: formatMinor(_actual),
-          onChanged: _started ? (v) => setState(() => _actual = v.round()) : null,
+          onChanged:
+              _started ? (v) => setState(() => _actual = v.round()) : null,
+          onChangeEnd: _started ? (_) => _saveDraft() : null,
         ),
         Row(children: [
           Expanded(
