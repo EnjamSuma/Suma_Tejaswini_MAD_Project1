@@ -39,7 +39,25 @@ void main() {
         [p(1, 450, '2026-10-01'), p(2, 600, '2026-10-02'), d]);
     expect(r.hasEstimate, false);
   });
+  
+    test('negative amounts are ignored', () {
+    final n = PurchaseLog(id: 9, mealId: 1, purchasedAt: '2026-10-04',
+        actualPriceMinor: -100, saveKey: 'n');
+    final r = estimateNextCost(
+        [p(1, 450, '2026-10-01'), p(2, 600, '2026-10-02'), n]);
+    expect(r.hasEstimate, false); // only 2 valid purchases remain
+  });
 
+  test('same-date tie is broken by the higher id', () {
+    final r = estimateNextCost([
+      p(1, 100, '2026-10-01'), p(2, 200, '2026-10-01'),
+      p(3, 300, '2026-10-01'), p(4, 400, '2026-10-01'),
+    ]);
+    expect(r.usedMinor, [400, 300, 200]);
+    expect(r.estimateMinor, 300);
+    expect(r.baselineMinor, 400);
+  });
+  
   test('outlier drags the mean up (counterexample)', () {
     final r = estimateNextCost(
         [p(1, 450, '2026-10-01'), p(2, 450, '2026-10-02'), p(3, 1800, '2026-10-03')]);
