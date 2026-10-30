@@ -115,8 +115,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
             ),
           ]),
         ),
-        Card(
-          FutureBuilder<List<int>>(
+                FutureBuilder<List<int>>(
           future: _summaryFuture,
           builder: (_, snap) {
             if (!snap.hasData) return const LinearProgressIndicator();
@@ -128,7 +127,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
               child: ListTile(
                 title: Text(count == 0
                     ? 'No purchases yet'
-                    : 'Total ${formatMinor(total)}  |  $count purchases'),
+                    : 'Total ${formatMinor(total)}  |  $count ${count == 1 ? 'purchase' : 'purchases'}'),
                 subtitle: count == 0
                     ? null
                     : Text('Average ${formatMinor(avg)}  |  '
@@ -136,7 +135,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
               ),
             );
           },
-        ),
         ),
         Expanded(
           child: shown.isEmpty
